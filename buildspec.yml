@@ -26,12 +26,6 @@ phases:
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - export IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
       - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
-      - |
-        # Fail fast if Clerk publishable key is missing — saves build minutes & gives a clear message
-        if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
-          echo "ERROR: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. Set it in the CodeBuild project environment (or Secrets Manager)."
-          exit 1
-        fi
 
   build:
     commands:
