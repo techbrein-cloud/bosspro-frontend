@@ -30,21 +30,20 @@ phases:
           echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY found in environment."
         fi
 
-  build:
-    commands:
-      - echo "Build started on $(date)"
-      - echo "Running Next.js build..."
-      # Run build but don't exit the entire buildspec if it fails — record status instead
-      - BUILD_OK=1
-      - npm run build || BUILD_OK=0 && echo "npm run build failed but continuing (BUILD_OK=$BUILD_OK)"
-      - |
-        if [ "$BUILD_OK" -eq 1 ]; then
-          echo "Next build succeeded — building Docker image..."
-          docker build -t $REPOSITORY_URI:latest .
-          docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-        else
-          echo "Skipping Docker build because Next build failed."
-        fi
+build:
+  commands:
+    - echo "Build started on $(date)"
+    - echo "Running Next.js build..."
+    - |
+      if npm run build; then
+        echo "Next build succeeded — building Docker image..."
+        docker build -t $REPOSITORY_URI:latest .
+        docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      else
+        echo "Next build failed — skipping Docker build."
+        # optional: exit 1 to fail the whole build instead of skipping
+        # exit 1
+      fi
 
   post_build:
     commands:
