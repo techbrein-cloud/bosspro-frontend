@@ -3,7 +3,6 @@ version: 0.2
 env:
   variables:
     REPOSITORY_URI: 051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend
-    # Make sure this matches the container name in your ECS Task Definition:
     DOCKER_CONTAINER_NAME: frontend
 
 phases:
@@ -24,24 +23,32 @@ phases:
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - export IMAGE_TAG=${COMMIT_HASH:-build-${CODEBUILD_BUILD_ID##*:}}
       - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
+
+      # --- Load .env into environment (exports variables) ---
+      - echo "Loading .env (if present) into environment..."
+      - if [ -f .env ]; then set -a; . .env; set +a; else echo "⚠️ .env not found at repository root"; fi
+
+      # Presence check (do not print secret values)
       - |
-        if [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
-          echo "Clerk publishable key present? yes"
-        else
-          echo "Clerk publishable key present? no"
-        fi
+        echo "Presence check:"
+        [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ] && echo " - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: present" || echo " - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: MISSING"
+        [ -n "${NEXT_PUBLIC_API_BASE_URL:-}" ] && echo " - NEXT_PUBLIC_API_BASE_URL: present" || echo " - NEXT_PUBLIC_API_BASE_URL: MISSING"
+        [ -n "${NEXT_PUBLIC_GOOGLE_API_BASE_URL:-}" ] && echo " - NEXT_PUBLIC_GOOGLE_API_BASE_URL: present" || echo " - NEXT_PUBLIC_GOOGLE_API_BASE_URL: MISSING"
+        [ -n "${NEXT_PUBLIC_USER_SERVICE_URL:-}" ] && echo " - NEXT_PUBLIC_USER_SERVICE_URL: present" || echo " - NEXT_PUBLIC_USER_SERVICE_URL: MISSING"
+        [ -n "${NEXT_PUBLIC_AI_SERVICE_URL:-}" ] && echo " - NEXT_PUBLIC_AI_SERVICE_URL: present" || echo " - NEXT_PUBLIC_AI_SERVICE_URL: MISSING"
+        [ -n "${CLERK_SECRET_KEY:-}" ] && echo " - CLERK_SECRET_KEY: present (⚠️ secret found in repo; recommended to remove and store in Secrets Manager)" || echo " - CLERK_SECRET_KEY: not present in environment"
 
   build:
     commands:
       - echo "Build started on $(date)"
-      - echo "Building the Next.js app (on host) to catch errors early..."
-      - |
-        if [ -z "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
-          echo "WARNING: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set in CodeBuild env. If your app requires this at build-time, the docker build will fail."
-        fi
-      - npm run build || echo "Host build completed (warnings may exist). Continuing to docker build..."
       - echo "Building the Docker image..."
-      - docker build --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" -t $REPOSITORY_URI:latest .
+      - docker build \
+          --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+          --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+          --build-arg NEXT_PUBLIC_GOOGLE_API_BASE_URL="$NEXT_PUBLIC_GOOGLE_API_BASE_URL" \
+          --build-arg NEXT_PUBLIC_USER_SERVICE_URL="$NEXT_PUBLIC_USER_SERVICE_URL" \
+          --build-arg NEXT_PUBLIC_AI_SERVICE_URL="$NEXT_PUBLIC_AI_SERVICE_URL" \
+          -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
 
   post_build:
@@ -57,10 +64,11 @@ phases:
           echo "imagedefinitions.json:"
           cat imagedefinitions.json
         else
-          echo "No docker image found for $REPOSITORY_URI:latest — failing the build."
+          echo "❌ No docker image found for $REPOSITORY_URI:latest — failing the build."
           exit 1
         fi
 
 artifacts:
   files:
     - imagedefinitions.json
+
