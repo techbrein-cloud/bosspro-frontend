@@ -1,28 +1,34 @@
-
-FROM node:16 AS builder
+# ---- builder ----
+FROM node:18.20-alpine AS builder
 WORKDIR /app
 
+# copy package and lockfiles first for caching
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --prefer-offline || npm install
 
-# Copy source
+# install all deps (dev + prod) for build
+RUN npm ci
+
+# copy source and build
 COPY . .
 
-# Build Next.js
+# If you need build-time envs (Clerk publishable key), accept them as build-arg
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+
 RUN npm run build
 
-FROM node:16-alpine AS runner
+# ---- runner ----
+FROM node:18.20-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
-EXPOSE 3000
 
-# Copy build and node_modules
-COPY --from=builder /app/package*.json ./
+# install only production deps
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# copy built output and static assets
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
 
-RUN addgroup -S next && adduser -S next -G next
-USER next
-
-CMD ["npm", "start"]
+EXPOSE 3000
+CMD ["npm", "run", "start"]
