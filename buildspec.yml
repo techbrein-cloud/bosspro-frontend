@@ -5,8 +5,8 @@ env:
     REPOSITORY_URI: "051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend"
 
   secrets-manager:
-    CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:clerk/production-tlSrO9"
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
+    CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:CLERK_SECRET_KEY-hDz14k"
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK_PUBLISHABLE_KEY-IuG2ox"
 
 phases:
   install:
