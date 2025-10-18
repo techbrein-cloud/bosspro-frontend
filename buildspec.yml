@@ -59,7 +59,6 @@ phases:
         TAG="$REPO:latest"
         FULL_TAG="$REPO:$IMAGE_TAG"
         echo "TAG=$TAG FULL_TAG=$FULL_TAG"
-        # Build command with optional publishable key
         if [ -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
           docker build \
             --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
