@@ -4,7 +4,6 @@ env:
   variables:
     REPOSITORY_URI: "051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend"
 
-  # Secrets Manager mapping (kept here so CodeBuild injects them as env vars)
   secrets-manager:
     CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:clerk/production-tlSrO9"
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
@@ -15,43 +14,45 @@ phases:
       nodejs: 18
     commands:
       - echo "Install phase - node $(node -v) npm $(npm -v)"
-      # Optional: enable Docker BuildKit if you plan to use build-time secrets securely
+      # Optional: enable BuildKit if you plan to use --secret with docker build
       # - export DOCKER_BUILDKIT=1
 
   pre_build:
     commands:
-      - echo "Entered pre_build phase..."
-      - echo "Installing Node.js dependencies on host (optional) - node $(node -v)"
-      - npm ci || npm install
-      - echo "Logging in to Amazon ECR..."
-      - aws --version
-      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $REPOSITORY_URI
-      - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - export IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
-      - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
-      - printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY length=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
+      - |
+        echo "Entered pre_build phase..."
+        echo "Installing Node.js dependencies on host (optional)"
+        npm ci || npm install
+        echo "Logging in to Amazon ECR..."
+        aws --version
+        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $REPOSITORY_URI
+        COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+        IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+        echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
+        printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY length=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
 
   build:
     commands:
-      - echo "Build started on $(date)"
-      - echo "Sanity checks for secret presence (lengths masked)"
-      - printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY len=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
-      - printf 'CLERK_SECRET_KEY len=%s\n' "$(printf "%s" "$CLERK_SECRET_KEY" | wc -c)"
-      - echo "Enabling verbose shell output for debugging"
-      - set -x
-      - echo "Running docker build (show full output) ..."
-      # IMPORTANT: Do NOT pass CLERK_SECRET_KEY as a build-arg. Keep it runtime-only.
-      - docker build --progress=plain \
+      - |
+        echo "Build started on $(date)"
+        echo "Sanity: print secret lengths (masked)"
+        printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY len=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
+        printf 'CLERK_SECRET_KEY len=%s\n' "$(printf "%s" "$CLERK_SECRET_KEY" | wc -c)"
+        echo "Enabling verbose shell output for debugging"
+        set -x
+        echo "Running docker build (show full output) ..."
+        # IMPORTANT: Do NOT pass CLERK_SECRET_KEY as a build-arg. Keep it runtime-only.
+        docker build --progress=plain \
           --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
           -t $REPOSITORY_URI:latest .
-      - echo "Docker build exit code: $?"
-      - set +x
-      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+        echo "Docker build exit code: $?"
+        set +x
+        docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
 
   post_build:
     commands:
-      - echo "Build completed on $(date)"
       - |
+        echo "Build completed on $(date)"
         if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${REPOSITORY_URI}:latest$"; then
           echo "Pushing the Docker images to ECR..."
           docker push $REPOSITORY_URI:latest
