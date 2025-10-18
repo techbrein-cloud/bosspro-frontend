@@ -1,27 +1,40 @@
-FROM node:16 AS builder
+# Dockerfile (replace your current one)
+# --- builder (full Debian) ---
+FROM node:18-bullseye AS builder
 WORKDIR /app
 
+# public build-time args (only non-sensitive values)
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+
+# cache dependencies layer
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --prefer-offline || npm install
+RUN npm ci --no-audit --prefer-offline
 
-# Copy source
+# copy source and build
 COPY . .
-
-# Build Next.js
 RUN npm run build
 
-FROM node:16-alpine AS runner
+# remove dev deps
+RUN npm prune --production
+
+# --- runtime (small) ---
+FROM node:18-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# Copy build and node_modules
+# copy artifacts from builder
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
 
-RUN addgroup -S next && adduser -S next -G next
-USER next
+# non-root user
+RUN addgroup -S app && adduser -S -G app app \
+    && chown -R app:app /app
+USER app
 
 CMD ["npm", "start"]
