@@ -37,14 +37,31 @@ phases:
       - npm ci
       - npm run build
       - echo "Building docker image..."
-      - docker build \
-          --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
-          --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-          -t $REPOSITORY_URI:latest .
+      # set variables
+      - REPO="$REPOSITORY_URI"
+      - TAG="$REPO:latest"
+      - IMAGE_TAG="$REPO:$IMAGE_TAG"
+      # build with conditional inclusion of publishable key
+      - |
+        if [ -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
+          echo "Using NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY build-arg"
+          docker build \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+            -t "$TAG" .
+        else
+          echo "No NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY provided — building without that arg"
+          docker build \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+            -t "$TAG" .
+        fi
 
   post_build:
     commands:
-      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-      - docker push $REPOSITORY_URI:latest
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - printf '[{"name":"frontend","imageUri":"%s"}]' "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+      - echo "Tagging image with build tag and pushing to ECR..."
+      - docker tag "$REPO:latest" "$REPO:$IMAGE_TAG"
+      - docker push "$REPO:latest"
+      - docker push "$REPO:$IMAGE_TAG"
+      - echo "Writing imagedefinitions.json"
+      - printf '[{"name":"%s","imageUri":"%s"}]' "frontend" "$REPO:$IMAGE_TAG" > imagedefinitions.json
+      - cat imagedefinitions.json
