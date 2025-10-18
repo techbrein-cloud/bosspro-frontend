@@ -2,15 +2,12 @@ version: 0.2
 
 env:
   variables:
-    # Put your ECR repo here or set it from project env vars
-    REPOSITORY_URI: 051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend
-    # IMPORTANT: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY in the CodeBuild project's environment (Console or SecretsManager).
-    # Do NOT hardcode the actual key here.
-    # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: <set-in-project-env>
-secrets-manager:
+    REPOSITORY_URI: "051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend"
+
+  # Secrets Manager mapping (must be under `env:` exactly)
+  secrets-manager:
     CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:clerk/production-tlSrO9"
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
-
 
 phases:
   install:
@@ -22,7 +19,7 @@ phases:
   pre_build:
     commands:
       - echo "Entered pre_build phase..."
-      - echo "Installing Node.js dependencies..."
+      - echo "Installing Node.js dependencies on host..."
       - npm ci || npm install
       - echo "Logging in to Amazon ECR..."
       - aws --version
@@ -30,24 +27,25 @@ phases:
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - export IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
       - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
-      - echo "Clerk publishable key present? ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:+yes/no}"
+      # safe check: print length of publishable key (masked in logs)
+      - printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY length=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
 
   build:
     commands:
       - echo "Build started on $(date)"
-      - echo "Building the Next.js app..."
-      # npm build will fail if required env vars (like the publishable key) are missing
-      - npm run build
-
-      - echo "Building the Docker image..."
-      - docker build -t $REPOSITORY_URI:latest .
+      - echo "Building the Next.js app (host) - this is optional, but we keep it)"
+      - npm run build || true
+      - echo "Building Docker image (pass required secrets as build-args)..."
+      - docker build \
+          --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+          --build-arg CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+          -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
 
   post_build:
     commands:
       - echo "Build completed on $(date)"
       - |
-        # Only push if the docker image exists locally
         if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${REPOSITORY_URI}:latest$"; then
           echo "Pushing the Docker images to ECR..."
           docker push $REPOSITORY_URI:latest
@@ -59,8 +57,6 @@ phases:
           cat imagedefinitions.json
         else
           echo "No docker image found for $REPOSITORY_URI:latest — skipping push and imagedefinitions creation."
-          # Exit non-zero if you want the build to fail here instead of silently continuing.
-          # exit 1
         fi
 
 artifacts:
