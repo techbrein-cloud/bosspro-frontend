@@ -53,7 +53,7 @@ phases:
           docker push $REPOSITORY_URI:latest
           docker push $REPOSITORY_URI:$IMAGE_TAG
           echo "Writing imagedefinitions.json for CodePipeline/ECS..."
-          DOCKER_CONTAINER_NAME=javatechie-registry
+          DOCKER_CONTAINER_NAME=bosspro-fronted
           printf '[{"name":"%s","imageUri":"%s"}]' "$DOCKER_CONTAINER_NAME" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
           echo "imagedefinitions.json:"
           cat imagedefinitions.json
