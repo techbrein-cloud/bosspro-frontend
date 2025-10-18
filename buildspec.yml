@@ -14,7 +14,8 @@ env:
   secrets-manager:
     # CodeBuild will inject this securely at build time (masked in logs)
     # Replace with your secret ARN in Secrets Manager
-    CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
+    CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:clerk/production-tlSrO9"
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
 
 phases:
   install:
