@@ -3,6 +3,7 @@ version: 0.2
 env:
   variables:
     # public build vars
+    REPOSITORY_URI: 051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend
     NEXT_PUBLIC_API_BASE_URL: "https://project.serperp.com"
     NEXT_PUBLIC_GOOGLE_API_BASE_URL: "http://fileservice.serperp.com"
     NEXT_PUBLIC_USER_SERVICE_URL: "https://userservice.serperp.com"
