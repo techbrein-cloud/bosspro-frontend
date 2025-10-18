@@ -15,7 +15,6 @@ RUN npm ci --no-audit --prefer-offline
 
 # copy source and build
 COPY . .
-COPY .env .env
 RUN npm run build
 
 # collect only what's needed for runtime
