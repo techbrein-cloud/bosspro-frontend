@@ -44,6 +44,7 @@ phases:
         # IMPORTANT: Do NOT pass CLERK_SECRET_KEY as a build-arg. Keep it runtime-only.
         docker build --progress=plain \
           --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+          --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
           -t $REPOSITORY_URI:latest .
         echo "Docker build exit code: $?"
         set +x
