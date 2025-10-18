@@ -2,90 +2,66 @@ version: 0.2
 
 env:
   variables:
+    # Put your ECR repo here or set it from project env vars
     REPOSITORY_URI: 051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend
-    NEXT_PUBLIC_API_BASE_URL: "https://project.serperp.com"
-    NEXT_PUBLIC_GOOGLE_API_BASE_URL: "http://fileservice.serperp.com"
-    NEXT_PUBLIC_USER_SERVICE_URL: "https://userservice.serperp.com"
-    NEXT_PUBLIC_AI_SERVICE_URL: "https://n8n.serperp.com/webhook/chat"
-    NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
-    NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up"
-
-  secrets-manager:
+    # IMPORTANT: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY in the CodeBuild project's environment (Console or SecretsManager).
+    # Do NOT hardcode the actual key here.
+    # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: <set-in-project-env>
+secrets-manager:
     CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:clerk/production-tlSrO9"
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
+
 
 phases:
   install:
     runtime-versions:
-      nodejs: 22
+      nodejs: 18
     commands:
-      - set -e
-      - echo "Using Node $(node -v), npm $(npm -v)"
-      - echo "Checking REPOSITORY_URI: $REPOSITORY_URI"
-      - if [ -z "$REPOSITORY_URI" ]; then echo "ERROR: REPOSITORY_URI not set"; exit 1; fi
+      - echo "Install phase - node $(node -v) npm $(npm -v)"
 
   pre_build:
     commands:
-      - echo "Logging in to ECR..."
-      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $(echo $REPOSITORY_URI | cut -d'/' -f1)
+      - echo "Entered pre_build phase..."
+      - echo "Installing Node.js dependencies..."
+      - npm ci || npm install
+      - echo "Logging in to Amazon ECR..."
+      - aws --version
+      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $REPOSITORY_URI
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - export IMAGE_TAG=${IMAGE_TAG:-build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')}
-      - export REPO="$REPOSITORY_URI"
-      - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG REPO=$REPO"
-      - if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then echo "NOTE: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is empty"; else echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is set (masked)"; fi
+      - export IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+      - echo "COMMIT_HASH=$COMMIT_HASH IMAGE_TAG=$IMAGE_TAG"
+      - echo "Clerk publishable key present? ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:+yes/no}"
 
   build:
     commands:
-      - echo "Installing dependencies..."
-      - npm ci
-      - echo "Running build..."
-      - |
-        if npm run build --loglevel verbose; then
-          echo "npm run build succeeded"
-        else
-          echo "npm run build FAILED — dumping diagnostics..."
-          echo "----- ls -la -----"
-          ls -la
-          echo "----- node and npm versions -----"
-          node -v && npm -v
-          echo "----- npm ls (top) -----"
-          npm ls --depth=0 || true
-          echo "----- tail npm-debug.log (if exists) -----"
-          [ -f npm-debug.log ] && tail -n 200 npm-debug.log || true
-          exit 1
-        fi
-      - echo "Building docker image..."
-      - |
-        TAG="$REPO:latest"
-        FULL_TAG="$REPO:$IMAGE_TAG"
-        echo "TAG=$TAG FULL_TAG=$FULL_TAG"
-        if [ -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
-          docker build \
-            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
-            --build-arg NEXT_PUBLIC_GOOGLE_API_BASE_URL="$NEXT_PUBLIC_GOOGLE_API_BASE_URL" \
-            --build-arg NEXT_PUBLIC_USER_SERVICE_URL="$NEXT_PUBLIC_USER_SERVICE_URL" \
-            --build-arg NEXT_PUBLIC_AI_SERVICE_URL="$NEXT_PUBLIC_AI_SERVICE_URL" \
-            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-            -t "$TAG" .
-        else
-          docker build \
-            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
-            --build-arg NEXT_PUBLIC_GOOGLE_API_BASE_URL="$NEXT_PUBLIC_GOOGLE_API_BASE_URL" \
-            --build-arg NEXT_PUBLIC_USER_SERVICE_URL="$NEXT_PUBLIC_USER_SERVICE_URL" \
-            --build-arg NEXT_PUBLIC_AI_SERVICE_URL="$NEXT_PUBLIC_AI_SERVICE_URL" \
-            -t "$TAG" .
-        fi
+      - echo "Build started on $(date)"
+      - echo "Building the Next.js app..."
+      # npm build will fail if required env vars (like the publishable key) are missing
+      - npm run build
+
+      - echo "Building the Docker image..."
+      - docker build -t $REPOSITORY_URI:latest .
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
 
   post_build:
     commands:
-      - echo "Tagging and pushing image to ECR..."
-      - if [ -z "$REPO" ]; then echo "ERROR: REPO is empty; aborting tagging"; exit 1; fi
-      - docker tag "$REPO:latest" "$REPO:$IMAGE_TAG"
-      - docker push "$REPO:latest"
-      - docker push "$REPO:$IMAGE_TAG"
-      - echo "Writing imagedefinitions.json"
-      - printf '[{"name":"%s","imageUri":"%s"}]' "frontend" "$REPO:$IMAGE_TAG" > imagedefinitions.json
-      - cat imagedefinitions.json
+      - echo "Build completed on $(date)"
+      - |
+        # Only push if the docker image exists locally
+        if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${REPOSITORY_URI}:latest$"; then
+          echo "Pushing the Docker images to ECR..."
+          docker push $REPOSITORY_URI:latest
+          docker push $REPOSITORY_URI:$IMAGE_TAG
+          echo "Writing imagedefinitions.json for CodePipeline/ECS..."
+          DOCKER_CONTAINER_NAME=javatechie-registry
+          printf '[{"name":"%s","imageUri":"%s"}]' "$DOCKER_CONTAINER_NAME" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+          echo "imagedefinitions.json:"
+          cat imagedefinitions.json
+        else
+          echo "No docker image found for $REPOSITORY_URI:latest — skipping push and imagedefinitions creation."
+          # Exit non-zero if you want the build to fail here instead of silently continuing.
+          # exit 1
+        fi
 
 artifacts:
   files:
