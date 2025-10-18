@@ -4,9 +4,15 @@ env:
   variables:
     # Put your ECR repo here or set it from project env vars
     REPOSITORY_URI: 051502724052.dkr.ecr.ap-south-1.amazonaws.com/bosspro/frontend
-    # IMPORTANT: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY in the CodeBuild project's environment (Console or SecretsManager).
-    # Do NOT hardcode the actual key here.
-    # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: <set-in-project-env>
+    NEXT_PUBLIC_API_BASE_URL: "https://project.serperp.com"
+    NEXT_PUBLIC_GOOGLE_API_BASE_URL: "http://fileservice.serperp.com"
+    NEXT_PUBLIC_USER_SERVICE_URL: "https://userservice.serperp.com"
+    NEXT_PUBLIC_AI_SERVICE_URL: "https://n8n.serperp.com/webhook/chat"
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up"
+secrets-manager:
+    # Inject secret at build-time (masked in logs)
+    CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
 
 phases:
   install:
