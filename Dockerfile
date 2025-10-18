@@ -1,40 +1,37 @@
-# Dockerfile (replace your current one)
-# --- builder (full Debian) ---
-FROM node:18-bullseye AS builder
+# ---------- build stage ----------
+ARG NODE_VERSION=22
+FROM node:${NODE_VERSION} AS builder
+
+# ensure npm is recent enough (optional but prevents npm/node mismatch warnings)
+RUN npm install -g npm@latest
+
 WORKDIR /app
-
-# public build-time args (only non-sensitive values)
-ARG NEXT_PUBLIC_API_BASE_URL
-ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-
-# cache dependencies layer
 COPY package*.json ./
-RUN npm ci --no-audit --prefer-offline
+# use npm ci in CI for reproducible installs
+RUN npm ci --production=false
 
-# copy source and build
 COPY . .
-RUN npm run build
+# build step (if you have one)
+RUN npm run build || echo "no build step"
 
-# remove dev deps
-RUN npm prune --production
+# ---------- runtime stage ----------
+FROM node:${NODE_VERSION}-slim AS runner
 
-# --- runtime (small) ---
-FROM node:18-alpine AS runner
+# Keep npm updated in runtime as well (optional)
+RUN npm install -g npm@latest
+
 WORKDIR /app
+# copy only needed files from builder
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
+COPY --from=builder /app ./
+
+# drop to a non-root user (best practice)
+RUN useradd --uid 1000 --shell /bin/bash appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV NODE_ENV=production
 EXPOSE 3000
-
-# copy artifacts from builder
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/public ./public
-
-# non-root user
-RUN addgroup -S app && adduser -S -G app app \
-    && chown -R app:app /app
-USER app
-
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]
