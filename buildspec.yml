@@ -33,14 +33,20 @@ phases:
   build:
     commands:
       - echo "Build started on $(date)"
-      - echo "Building the Next.js app (host) - this is optional, but we keep it)"
-      - npm run build || true
-      - echo "Building Docker image (pass required secrets as build-args)..."
-      - docker build \
+      - echo "Sanity: print secret lengths (masked), so we know they're present"
+      - printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY len=%s\n' "$(printf "%s" "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" | wc -c)"
+      - printf 'CLERK_SECRET_KEY len=%s\n' "$(printf "%s" "$CLERK_SECRET_KEY" | wc -c)"
+      - echo "Enabling verbose shell output for debugging"
+      - set -x
+      - echo "Running docker build (show full output) ..."
+      - docker build --progress=plain \
           --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
           --build-arg CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
           -t $REPOSITORY_URI:latest .
+      - echo "Docker build exit code: $?"
+      - set +x
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+
 
   post_build:
     commands:
