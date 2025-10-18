@@ -10,7 +10,7 @@ env:
     NEXT_PUBLIC_AI_SERVICE_URL: "https://n8n.serperp.com/webhook/chat"
     NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
     NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up"
-secrets-manager:
+  secrets-manager:
     # Inject secret at build-time (masked in logs)
     CLERK_SECRET_KEY: "arn:aws:secretsmanager:ap-south-1:051502724052:secret:PUBLIC_CLERK-MbmdaJ"
 
