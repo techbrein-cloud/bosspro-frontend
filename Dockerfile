@@ -1,67 +1,42 @@
-# ---------- build stage ----------
-ARG NODE_VERSION=22
-FROM node:${NODE_VERSION} AS builder
-
+# Dockerfile
+# --- builder (full Debian) ---
+FROM node:18-bullseye AS builder
 WORKDIR /app
 
-# keep npm current
-RUN npm install -g npm@latest
+# ONLY public build-time args (safe to embed in client bundle)
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+# DO NOT add CLERK_SECRET_KEY here - it's runtime-only
 
-# install dependencies
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+
+# cache dependencies layer
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --no-audit --prefer-offline
 
-# copy source
+# copy source and build
 COPY . .
-
-# build (fail loudly if it fails)
 RUN npm run build
 
-# collect build artifacts
-RUN set -eux; \
-    mkdir -p /artifacts; \
-    # copy common build outputs (Next.js, TS, etc.)
-    for dir in .next dist build out public; do \
-      if [ -d "$dir" ]; then cp -a "$dir" /artifacts/; fi; \
-    done; \
-    # copy configs and manifests
-    for f in next.config.js server.js package*.json; do \
-      [ -f "$f" ] && cp -a "$f" /artifacts/ || true; \
-    done; \
-    echo "Artifacts ready:"; ls -la /artifacts || true
+# remove dev deps
+RUN npm prune --production
 
-# ---------- runtime stage ----------
-FROM node:${NODE_VERSION}-slim AS runner
+# --- runtime (small) ---
+FROM node:18-alpine AS runner
 WORKDIR /app
-
-# install only production deps
-COPY --from=builder /artifacts/package*.json ./
-RUN npm ci --production
-
-# copy built artifacts
-COPY --from=builder /artifacts /app
-
-# robust non-root user creation (works even if useradd not present)
-RUN set -eux; \
-    TARGET_UID=1000; TARGET_USER=appuser; TARGET_GROUP=appuser; \
-    if id -u "$TARGET_USER" >/dev/null 2>&1; then \
-      echo "User $TARGET_USER already exists"; \
-    else \
-      if command -v useradd >/dev/null 2>&1; then \
-        useradd --uid "$TARGET_UID" --create-home --shell /bin/bash "$TARGET_USER" || true; \
-      elif command -v adduser >/dev/null 2>&1; then \
-        adduser --disabled-password --gecos "" --uid "$TARGET_UID" "$TARGET_USER" || true; \
-      else \
-        echo "$TARGET_USER:x:${TARGET_UID}:${TARGET_UID}:app user:/home/$TARGET_USER:/bin/bash" >> /etc/passwd || true; \
-        mkdir -p /home/$TARGET_USER || true; \
-      fi; \
-    fi; \
-    mkdir -p /app && chown -R "${TARGET_UID}:${TARGET_UID}" /app || true
-
-USER appuser
-
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# auto-detect correct start command
-CMD ["sh", "-c", "if [ -d .next ]; then npx next start; elif [ -d dist ]; then node dist/server.js; elif [ -f server.js ]; then node server.js; else npm run start; fi"]
+# copy artifacts from builder
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/public ./public
+
+# non-root user
+RUN addgroup -S app && adduser -S -G app app \
+    && chown -R app:app /app
+USER app
+
+CMD ["npm", "start"]
